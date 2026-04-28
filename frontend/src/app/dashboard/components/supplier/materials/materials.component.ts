@@ -46,7 +46,7 @@ export class MaterialsComponent implements OnInit {
 
   fetchMaterials(id: number): void {
     this.isLoading = true;
-    this.supplierService.getAvailability(id).subscribe(
+    this.supplierService.getInventorySummary(id).subscribe(
       (data) => {
         this.materials = data;
         this.isLoading = false;

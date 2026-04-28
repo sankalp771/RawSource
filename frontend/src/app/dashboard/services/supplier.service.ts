@@ -1,20 +1,23 @@
 import { Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Observable } from 'rxjs';
+import { environment } from '../../../environments/environment';
 
 @Injectable({
   providedIn: 'root'
 })
 export class SupplierService {
-  private apiUrl = 'http://localhost:8080/api';
+  private apiUrl = environment.apiBaseUrl;
 
   constructor(private http: HttpClient) {}
 
   // Get raw materials for the supplier
   getMaterials(supplierId: number): Observable<any[]> {
-    // In this backend, suppliers usually have materials tied to them.
-    // Assuming /api/suppliers/{id}/materials endpoint exists or similar
     return this.http.get<any[]>(`${this.apiUrl}/suppliers/${supplierId}/materials`);
+  }
+
+  getInventorySummary(supplierId: number): Observable<any[]> {
+    return this.http.get<any[]>(`${this.apiUrl}/suppliers/${supplierId}/inventory`);
   }
 
   getAvailability(supplierId: number): Observable<any[]> {
@@ -43,5 +46,9 @@ export class SupplierService {
 
   createPricing(payload: any): Observable<any> {
     return this.http.post<any>(`${this.apiUrl}/pricings`, payload);
+  }
+
+  updatePricing(pricingId: number, payload: any): Observable<any> {
+    return this.http.patch<any>(`${this.apiUrl}/pricings/${pricingId}`, payload);
   }
 }

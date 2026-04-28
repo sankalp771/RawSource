@@ -1,5 +1,5 @@
 import { Component, OnInit } from '@angular/core';
-import { forkJoin } from 'rxjs';
+import { forkJoin, of } from 'rxjs';
 import { SupplierService } from '../../../services/supplier.service';
 import { AuthService } from '../../../../auth/services/auth.service';
 
@@ -32,20 +32,9 @@ export class InventoryComponent implements OnInit {
   }
 
   loadCombinedData(id: number): void {
-    forkJoin({
-      availability: this.supplierService.getAvailability(id),
-      pricing: this.supplierService.getPricing(id)
-    }).subscribe({
+    this.supplierService.getInventorySummary(id).subscribe({
       next: (result) => {
-        // Simple merge logic: assumption is and availability record and pricing record exist for the same material
-        // In a real app, we'd join on materialId.
-        this.inventoryData = result.availability.map((avail: any) => {
-          const priceRecord = result.pricing.find((p: any) => p.materialId === avail.materialId);
-          return {
-            ...avail,
-            price: priceRecord?.price || 0
-          };
-        });
+        this.inventoryData = result;
         this.isLoading = false;
       },
       error: (err) => {
@@ -57,15 +46,22 @@ export class InventoryComponent implements OnInit {
   }
 
   onSave(item: any): void {
-    const updatePayload = {
+    const availabilityPayload = {
       quantity: item.quantity,
       unit: item.unit
     };
-    
-    // In our backend, the availability endpoint is /api/availabilities/{id}
-    // We can use the HttpClient directly here or add a method to the SupplierService
-    this.supplierService.updateAvailability(item.availId, updatePayload).subscribe({
-      next: (updatedItem) => {
+
+    const pricingPayload = {
+      price: item.price,
+      validFrom: item.validFrom,
+      validTo: item.validTo
+    };
+
+    forkJoin({
+      availability: this.supplierService.updateAvailability(item.availId, availabilityPayload),
+      pricing: item.pricingId ? this.supplierService.updatePricing(item.pricingId, pricingPayload) : of(null)
+    }).subscribe({
+      next: () => {
         alert('Changes for material saved successfully!');
       },
       error: (err) => {

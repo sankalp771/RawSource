@@ -24,6 +24,7 @@ public class MarketplaceController {
     private final ContractRepository contractRepository;
     private final OrderRepository orderRepository;
     private final ConsumerRepository consumerRepository;
+    private final QualityRatingRepository qualityRatingRepository;
 
     @GetMapping("/listings")
     public ResponseEntity<List<MarketplaceListingDTO>> getListings() {
@@ -40,7 +41,10 @@ public class MarketplaceController {
             dto.setMaterialId(p.getMaterial().getMaterialId());
             dto.setMaterialName(p.getMaterial().getName());
             dto.setMaterialDescription(p.getMaterial().getDescription());
+            dto.setMaterialCategory(p.getMaterial().getCategory());
             dto.setPrice(p.getPrice());
+            dto.setValidFrom(p.getValidFrom());
+            dto.setValidTo(p.getValidTo());
 
             if (availOpt.isPresent()) {
                 dto.setQuantityAvailable(availOpt.get().getQuantity());
@@ -49,6 +53,9 @@ public class MarketplaceController {
                 dto.setQuantityAvailable(0);
                 dto.setUnit("units");
             }
+
+            qualityRatingRepository.findBySupplierAndMaterial(p.getSupplier(), p.getMaterial())
+                    .ifPresent(rating -> dto.setQualityScore(rating.getAggregateScore()));
             
             listings.add(dto);
         }
@@ -66,6 +73,17 @@ public class MarketplaceController {
         // 2. Fetch Consumer
         Consumer consumer = consumerRepository.findById(request.getConsumerId())
                 .orElseThrow(() -> new RuntimeException("Consumer not found"));
+
+        if (request.getQuantity() == null || request.getQuantity() <= 0) {
+            throw new RuntimeException("Quantity must be greater than zero");
+        }
+
+        Availability availability = availabilityRepository.findBySupplierAndMaterial(pricing.getSupplier(), pricing.getMaterial())
+                .orElseThrow(() -> new RuntimeException("Availability not found for this listing"));
+
+        if (availability.getQuantity() == null || availability.getQuantity() < request.getQuantity()) {
+            throw new RuntimeException("Not enough stock available");
+        }
 
         // 3. Create Contract
         Contract contract = new Contract();
@@ -96,12 +114,8 @@ public class MarketplaceController {
         order = orderRepository.save(order);
 
         // 6. Deduct from Availability
-        Optional<Availability> availOpt = availabilityRepository.findBySupplierAndMaterial(pricing.getSupplier(), pricing.getMaterial());
-        if (availOpt.isPresent()) {
-            Availability avail = availOpt.get();
-            avail.setQuantity(Math.max(0, avail.getQuantity() - request.getQuantity()));
-            availabilityRepository.save(avail);
-        }
+        availability.setQuantity(availability.getQuantity() - request.getQuantity());
+        availabilityRepository.save(availability);
 
         return ResponseEntity.ok(order);
     }
@@ -114,9 +128,13 @@ public class MarketplaceController {
         private Long materialId;
         private String materialName;
         private String materialDescription;
+        private String materialCategory;
         private BigDecimal price;
         private Integer quantityAvailable;
         private String unit;
+        private Integer qualityScore;
+        private LocalDate validFrom;
+        private LocalDate validTo;
     }
 
     @Data

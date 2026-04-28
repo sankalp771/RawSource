@@ -27,6 +27,9 @@ import com.example.supply_chain.entity.Review;
 import com.example.supply_chain.entity.Pricing;
 import com.example.supply_chain.entity.Availability;
 import com.example.supply_chain.entity.QualityRating;
+import com.example.supply_chain.repository.AvailabilityRepository;
+import com.example.supply_chain.repository.PricingRepository;
+import com.example.supply_chain.repository.QualityRatingRepository;
 import com.example.supply_chain.repository.SupplierRepository;
 
 import lombok.RequiredArgsConstructor;
@@ -36,6 +39,8 @@ import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Comparator;
+import java.util.stream.Collectors;
 import java.security.Key;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.SignatureAlgorithm;
@@ -47,6 +52,9 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 @RequiredArgsConstructor
 public class SupplierController {
     private final SupplierRepository repository;
+    private final AvailabilityRepository availabilityRepository;
+    private final PricingRepository pricingRepository;
+    private final QualityRatingRepository qualityRatingRepository;
     private final PasswordEncoder passwordEncoder;
     private final Key jwtSecretKey = Keys.secretKeyFor(SignatureAlgorithm.HS256);
 
@@ -80,6 +88,51 @@ public class SupplierController {
     @GetMapping("/{id}/availability")
     public ResponseEntity<List<Availability>> getSupplierAvailabilities(@PathVariable Long id){
         return repository.findById(id).map(supplier -> ResponseEntity.ok(supplier.getAvailabilities())).orElse(ResponseEntity.notFound().build());
+    }
+
+    @GetMapping("/{id}/inventory")
+    public ResponseEntity<List<SupplierInventoryDTO>> getSupplierInventory(@PathVariable Long id) {
+        return repository.findById(id)
+                .map(supplier -> ResponseEntity.ok(
+                        availabilityRepository.findAll().stream()
+                                .filter(avail -> avail.getSupplier() != null
+                                        && avail.getSupplier().getSupplierId().equals(supplier.getSupplierId()))
+                                .map(avail -> {
+                                    RawMaterial material = avail.getMaterial();
+                                    Optional<Pricing> latestPricing = pricingRepository.findAll().stream()
+                                            .filter(pricing -> pricing.getSupplier() != null
+                                                    && pricing.getMaterial() != null
+                                                    && pricing.getSupplier().getSupplierId().equals(supplier.getSupplierId())
+                                                    && pricing.getMaterial().getMaterialId().equals(material.getMaterialId()))
+                                            .max(Comparator.comparing(Pricing::getValidFrom, Comparator.nullsLast(Comparator.naturalOrder())));
+
+                                    Optional<QualityRating> rating = qualityRatingRepository.findBySupplierAndMaterial(supplier, material);
+
+                                    SupplierInventoryDTO dto = new SupplierInventoryDTO();
+                                    dto.setAvailId(avail.getAvailId());
+                                    dto.setSupplierId(supplier.getSupplierId());
+                                    dto.setMaterialId(material.getMaterialId());
+                                    dto.setMaterialName(material.getName());
+                                    dto.setMaterialDescription(material.getDescription());
+                                    dto.setMaterialCategory(material.getCategory());
+                                    dto.setQuantity(avail.getQuantity());
+                                    dto.setUnit(avail.getUnit());
+                                    latestPricing.ifPresent(pricing -> {
+                                        dto.setPricingId(pricing.getPricingId());
+                                        dto.setPrice(pricing.getPrice());
+                                        dto.setValidFrom(pricing.getValidFrom());
+                                        dto.setValidTo(pricing.getValidTo());
+                                    });
+                                    rating.ifPresent(q -> dto.setQualityScore(q.getAggregateScore()));
+                                    return dto;
+                                })
+                                .collect(Collectors.toList())))
+                .orElse(ResponseEntity.notFound().build());
+    }
+
+    @GetMapping("/{id}/materials")
+    public ResponseEntity<List<SupplierInventoryDTO>> getSupplierMaterials(@PathVariable Long id) {
+        return getSupplierInventory(id);
     }
 
     @GetMapping("/{id}/ratings")
@@ -208,6 +261,23 @@ public class SupplierController {
     public static class LoginRequest {
         private String email;
         private String password;
+    }
+
+    @Data
+    public static class SupplierInventoryDTO {
+        private Long availId;
+        private Long supplierId;
+        private Long materialId;
+        private String materialName;
+        private String materialDescription;
+        private String materialCategory;
+        private Integer quantity;
+        private String unit;
+        private Long pricingId;
+        private java.math.BigDecimal price;
+        private Integer qualityScore;
+        private java.time.LocalDate validFrom;
+        private java.time.LocalDate validTo;
     }
 }
 

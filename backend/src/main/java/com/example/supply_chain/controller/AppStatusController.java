@@ -8,7 +8,7 @@ import java.util.Map;
 @RestController
 public class AppStatusController {
 
-    @GetMapping("/")
+    @GetMapping("/api/status")
     public Map<String, String> root() {
         return Map.of(
                 "app", "RawSource backend",
